@@ -157,7 +157,12 @@ $('push-btn').addEventListener('click', async () => {
       showNotice(notice, 'Web push is not set up on the server yet.', 'err');
       return;
     }
-    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.register('/sw.js');
+    // The just-registered worker is not active yet on a first install —
+    // subscribing against it fails on iPhone, and only a second tap
+    // (once the worker is active) shows the Allow prompt. Wait for the
+    // active worker and subscribe against that registration instead.
+    const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
