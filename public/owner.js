@@ -184,6 +184,33 @@ $('push-btn').addEventListener('click', async () => {
   }
 });
 
+$('push-test-btn').addEventListener('click', async () => {
+  const notice = $('push-notice');
+  const btn = $('push-test-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/push/test', { method: 'POST', headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showNotice(notice, data.error || 'Could not send a test notification.', 'err');
+      return;
+    }
+    if (data.skipped === 'not_configured') {
+      showNotice(notice, 'Web push is not set up on the server yet.', 'err');
+    } else if (!data.total) {
+      showNotice(notice, 'No devices are subscribed yet — tap "Enable booking notifications" first, then try the test again.', 'warn');
+    } else if (data.failed > 0) {
+      showNotice(notice, `Test notification: sent to ${data.sent} of ${data.total} device(s), ${data.failed} failed.`, 'warn');
+    } else {
+      showNotice(notice, `Test notification sent to ${data.sent} device(s) — check your phone for it.`, 'ok');
+    }
+  } catch {
+    showNotice(notice, 'Could not reach the server.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $('push-off-btn').addEventListener('click', async () => {
   const notice = $('push-notice');
   try {
