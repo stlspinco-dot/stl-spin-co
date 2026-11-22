@@ -76,6 +76,7 @@ nav a:hover { color: var(--gold); }
 
 /* Gallery — clearly labelled inspiration / sample imagery */
 .gallery figure { margin: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--black-2); }
+.gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
 .gallery .ph {
   aspect-ratio: 4 / 3; display: grid; place-items: center; text-align: center; padding: 20px;
   background: linear-gradient(135deg, #1d1810, #0f0d0a 55%, #241d10); color: var(--gold-soft);
