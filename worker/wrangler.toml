@@ -1,0 +1,32 @@
+name = "stl-spin-co"
+main = "src/index.js"
+compatibility_date = "2026-11-18"
+
+# Static site: serves ../public/ (index.html, styles.css, app.js, owner.html, owner.js).
+# API requests under /api/* are handled by src/index.js; everything else
+# falls through to these assets, including /owner.
+[assets]
+directory = "../public"
+binding = "ASSETS"
+
+# Bookings database (Cloudflare D1, SQLite). Create it first:
+#   npx wrangler d1 create stl-spin-co
+# then paste the database_id it prints below, and apply the schema:
+#   npx wrangler d1 execute stl-spin-co --file ../migrations/001_init.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "stl-spin-co"
+database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+
+# Optional vars (set in the Cloudflare dashboard or with wrangler secret put):
+#   OWNER_PASSWORD       — required, Miles chooses it (secret, not a var)
+#   OWNER_SESSION_SECRET — required, random string (secret, not a var)
+#   RESEND_API_KEY       — optional, for real email (secret, not a var)
+#   FROM_EMAIL           — optional var; on this path it must be a verified
+#                          domain address, e.g. bookings@stlspinco.com
+#   OWNER_EMAIL          — optional var; where new-booking alerts go
+#                          (default stlspinco@gmail.com)
+#
+# [vars]
+# FROM_EMAIL = "bookings@stlspinco.com"
+# OWNER_EMAIL = "stlspinco@gmail.com"
