@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STL Spin Co — Bookings (Miles only)</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main>
+  <section>
+    <div class="wrap" style="max-width:760px">
+      <p class="eyebrow">STL Spin Co — Miles only</p>
+      <h1>Bookings</h1>
+      <p class="sub">Plain list. Date, time, location, email, phone — and Accept / Decline if it hasn&rsquo;t been approved yet.</p>
+
+      <div id="login-box" class="card">
+        <form id="login-form">
+          <label for="owner-password">Owner password</label>
+          <input id="owner-password" type="password" required autocomplete="current-password">
+          <div style="margin-top:12px"><button class="btn" type="submit">Log in</button></div>
+        </form>
+        <div class="notice" id="login-notice" role="status"></div>
+      </div>
+
+      <div id="bookings-box" style="display:none">
+        <div class="row-actions" style="margin-bottom:16px">
+          <button class="btn small ghost" id="refresh-btn" type="button">Refresh</button>
+          <button class="btn small ghost" id="logout-btn" type="button">Log out</button>
+        </div>
+        <div class="notice" id="owner-notice" role="status"></div>
+        <div id="owner-list"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="/owner.js"></script>
+</body>
+</html>
