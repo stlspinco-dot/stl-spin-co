@@ -71,6 +71,7 @@ $('login-form').addEventListener('submit', async (e) => {
     $('login-box').style.display = 'none';
     $('bookings-box').style.display = '';
     await loadBookings();
+    refreshPushState();
   } catch {
     showNotice(notice, 'Could not reach the server.', 'err');
   }
@@ -99,9 +100,113 @@ $('owner-list').addEventListener('click', async (e) => {
   }
 });
 
+// ------------------------------------------------- booking notifications
+// Web push, owner only. The button lives inside #bookings-box, so it
+// only shows after login. On iPhone this only works in the Home Screen
+// web app (iOS 16.4+) — in a plain Safari tab, subscribe() will fail
+// and the notice below says so plainly instead of failing silently.
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+async function currentPushSubscription() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg ? await reg.pushManager.getSubscription() : null;
+  } catch {
+    return null;
+  }
+}
+async function refreshPushState() {
+  const btn = $('push-btn');
+  const offBtn = $('push-off-btn');
+  const notice = $('push-notice');
+  if (!pushSupported()) {
+    btn.disabled = true;
+    showNotice(notice, 'This browser or device does not support web push notifications.', 'warn');
+    return;
+  }
+  const sub = await currentPushSubscription();
+  if (sub) {
+    btn.style.display = 'none';
+    offBtn.style.display = '';
+    showNotice(notice, 'Notifications are on for this device.', 'ok');
+  } else {
+    btn.style.display = '';
+    offBtn.style.display = 'none';
+    notice.className = 'notice';
+    notice.textContent = '';
+  }
+  if (Notification.permission === 'denied') {
+    btn.disabled = true;
+    showNotice(notice, 'Notifications are blocked for this app. On iPhone: open Settings, find STL Spin Co, turn Notifications on, then try again.', 'warn');
+  }
+}
+
+$('push-btn').addEventListener('click', async () => {
+  const notice = $('push-notice');
+  try {
+    const keyRes = await fetch('/api/push/vapid-public-key');
+    const keyData = await keyRes.json();
+    if (!keyRes.ok || !keyData.ok) {
+      showNotice(notice, 'Web push is not set up on the server yet.', 'err');
+      return;
+    }
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+    });
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.toJSON().keys }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      await sub.unsubscribe().catch(() => {});
+      showNotice(notice, data.error || 'Could not save this device for notifications.', 'err');
+      return;
+    }
+    showNotice(notice, 'Notifications are on for this device — you will get a notification when a new booking arrives.', 'ok');
+    await refreshPushState();
+  } catch (err) {
+    if (Notification.permission === 'denied' || (err && err.name === 'NotAllowedError')) {
+      showNotice(notice, 'Notifications are blocked for this app. On iPhone: open Settings, find STL Spin Co, turn Notifications on, then try again.', 'warn');
+    } else {
+      showNotice(notice, 'Could not turn notifications on here. On iPhone, open this page from the Home Screen app (not a Safari tab) and try again.', 'err');
+    }
+  }
+});
+
+$('push-off-btn').addEventListener('click', async () => {
+  const notice = $('push-notice');
+  try {
+    const sub = await currentPushSubscription();
+    if (sub) {
+      await fetch('/api/push/unsubscribe', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      }).catch(() => {});
+      await sub.unsubscribe().catch(() => {});
+    }
+    showNotice(notice, 'Notifications are off for this device.', '');
+    await refreshPushState();
+  } catch {
+    showNotice(notice, 'Could not turn notifications off — try again.', 'err');
+  }
+});
+
 // If already logged in (same browser session), show the list straight away.
 if (token()) {
   $('login-box').style.display = 'none';
   $('bookings-box').style.display = '';
   loadBookings();
+  refreshPushState();
 }
