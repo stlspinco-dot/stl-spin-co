@@ -1,0 +1,16 @@
+name = "stl-spin-co"
+compatibility_date = "2026-11-18"
+
+# Cloudflare Pages: serves the static public site from public/.
+# NOTE: the bookings API in server.js is Express + node:sqlite and does
+# not run on Workers as-is. The Workers + D1 port is now built in
+# worker/ (src/index.js, tested with node test-worker.mjs) — deploy
+# that, not this file alone. See docs/cloudflare.md and worker/README.md.
+[pages]
+# pages_build_output_dir = "public"
+
+# Example D1 binding for the Worker port (uncomment when building it):
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "stl-spin-co"
+# database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
