@@ -30,3 +30,6 @@ database_id = "5301caa6-8716-482d-ab84-ffd997d31dc2"
 # [vars]
 # FROM_EMAIL = "bookings@stlspinco.com"
 # OWNER_EMAIL = "stlspinco@gmail.com"
+
+[vars]
+VAPID_PUBLIC_KEY = "BHsoz2MEfXQCFUeTgZM-lEbbyzvL-9Li6GTwMElcFwlPd5gnUSHw_PM73DdgYXiQ5r2S5-mYA2h69Jo25FSqc7Q"
