@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>STL Spin Co — Bookings (Owner only)</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest-owner.json">
+<meta name="theme-color" content="#0b0a08">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -24,6 +29,15 @@
       </div>
 
       <div id="bookings-box" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-top:0">Booking notifications</h3>
+          <p class="sub" style="margin-bottom:12px">Get a notification on this device when a new booking arrives. On iPhone this only works from the Home Screen app (iOS 16.4+), after you allow notifications.</p>
+          <div class="row-actions" style="margin-top:0">
+            <button class="btn small" id="push-btn" type="button">Enable booking notifications</button>
+            <button class="btn small ghost" id="push-off-btn" type="button" style="display:none">Turn notifications off</button>
+          </div>
+          <div class="notice" id="push-notice" role="status"></div>
+        </div>
         <div class="row-actions" style="margin-bottom:16px">
           <button class="btn small ghost" id="refresh-btn" type="button">Refresh</button>
           <button class="btn small ghost" id="logout-btn" type="button">Log out</button>
