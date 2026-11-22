@@ -255,7 +255,7 @@ export default {
           alertEmail: alert.status,
           message: taken
             ? 'That date is already booked, so this request was auto-declined.'
-            : "Your request was submitted — it's Under Review. Miles will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.",
+            : "Your request was submitted — it's Under Review. A staff member will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.",
         },
         201,
       );
