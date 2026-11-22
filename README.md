@@ -214,3 +214,7 @@ published, deployed, or sent from this project. The Cloudflare Worker
 port itself (`worker/`) was tested locally with `node test-worker.mjs`
 (23/23 checks passed); wrangler deploy was not run — that needs Miles's
 Cloudflare account.
+## Deployment (live)
+
+- Live site: https://stl-spin-co.stlspinco.workers.dev/
+- Deploys automatically from this repo: Cloudflare Workers Builds is connected to `main` (root directory `worker`, deploy command `npx wrangler deploy`). Pushes to `main` deploy the Worker, with the D1 database `stl-spin-co` bound as `DB`.
