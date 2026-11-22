@@ -64,7 +64,7 @@ $('booking-form').addEventListener('submit', async (e) => {
     if (data.outcome === 'declined') {
       showNotice(notice, `That date is already booked, so this request was auto-declined. Please pick another date. (Ref ${data.booking.ref})`, 'warn');
     } else {
-      showNotice(notice, `Request ${data.booking.ref} submitted — Under Review. Miles will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.`, 'ok');
+      showNotice(notice, `Request ${data.booking.ref} submitted — Under Review. A staff member will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.`, 'ok');
       e.target.reset();
       $('date-hint').textContent = '';
     }
