@@ -2,6 +2,7 @@ name = "stl-spin-co"
 main = "src/index.js"
 compatibility_date = "2026-11-18"
 
+
 # Static site: serves ../public/ (index.html, styles.css, app.js, owner.html, owner.js).
 # API requests under /api/* are handled by src/index.js; everything else
 # falls through to these assets, including /owner.
@@ -16,7 +17,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "stl-spin-co"
-database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+database_id = "5301caa6-8716-482d-ab84-ffd997d31dc2"
 
 # Optional vars (set in the Cloudflare dashboard or with wrangler secret put):
 #   OWNER_PASSWORD       — required, Miles chooses it (secret, not a var)
@@ -26,7 +27,6 @@ database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
 #                          domain address, e.g. bookings@stlspinco.com
 #   OWNER_EMAIL          — optional var; where new-booking alerts go
 #                          (default stlspinco@gmail.com)
-#
 # [vars]
 # FROM_EMAIL = "bookings@stlspinco.com"
 # OWNER_EMAIL = "stlspinco@gmail.com"
