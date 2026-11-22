@@ -2,8 +2,14 @@
  * STL Spin Co — Cloudflare Worker port of server.js
  * --------------------------------------------------
  * Same public site, same API, same rules as the Node/Express version:
- *   - one booking per day (a second request for a taken date is stored
- *     as Declined, otherwise Under Review)
+ *   - one booking per day (a second request for a taken date is
+ *     auto-declined and not kept — the declined row is deleted after
+ *     the owner alert email and web push are triggered)
+ *   - declined bookings are deleted, not kept: a manual Decline
+ *     deletes the row, and an auto-declined request is deleted too.
+ *     Accepted (booked) bookings are deleted once their event date
+ *     has passed (pruned on the next bookings read / submission /
+ *     date check). Under Review bookings are never pruned.
  *   - guest My bookings lookup by the email they booked with
  *   - owner /owner page: Accept / Decline, Accept sends a confirmation
  *
@@ -79,6 +85,23 @@ function isValidEmail(s) {
 }
 function statusLabel(status) {
   return { under_review: 'Under Review', booked: 'Booked — Confirmed', declined: 'Declined' }[status] || status;
+}
+
+// Auto-delete: accepted (booked) bookings are removed once their event
+// date has passed. Only status='booked' rows with event_date before
+// today (UTC, YYYY-MM-DD string compare) are deleted. Under Review
+// bookings are never pruned, even if their date has passed, and
+// declined bookings are deleted at decline time, not here.
+async function prunePastBooked(env) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    await env.DB.prepare("DELETE FROM bookings WHERE status = 'booked' AND event_date < ?").bind(today).run();
+    // Declined bookings are deleted when declined; clean up any old
+    // declined rows that were stored before that rule existed.
+    await env.DB.prepare("DELETE FROM bookings WHERE status = 'declined'").run();
+  } catch {
+    // Pruning must never break a bookings read / submission.
+  }
 }
 
 function b64url(bytes) {
@@ -223,7 +246,14 @@ async function sendPush(env, sub, payloadObj) {
       body,
     });
     if (res.status === 404 || res.status === 410) return { status: 'gone' };
-    if (!res.ok) return { status: 'failed', error: `Push service ${res.status}` };
+    if (!res.ok) {
+      // Read the failure body so the cause is visible in Worker logs.
+      // Never log the endpoint, keys, or JWT — only the status + body.
+      let bodyText = '';
+      try { bodyText = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+      console.log(`[push failed] push service ${res.status}${bodyText ? `: ${bodyText}` : ''}`);
+      return { status: 'failed', error: `Push service ${res.status}` };
+    }
     return { status: 'sent' };
   } catch (err) {
     return { status: 'failed', error: String(err && err.message ? err.message : err) };
@@ -232,13 +262,13 @@ async function sendPush(env, sub, payloadObj) {
 
 async function sendPushToAll(env, payloadObj) {
   // Never let push break a booking: no keys / no table / no subs = skip.
-  if (!vapidKeys(env)) return { sent: 0, failed: 0, skipped: 'not_configured' };
+  if (!vapidKeys(env)) return { sent: 0, failed: 0, skipped: 'not_configured', total: 0 };
   let subs;
   try {
     const { results } = await env.DB.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions').all();
     subs = results || [];
   } catch {
-    return { sent: 0, failed: 0, skipped: 'no_table' };
+    return { sent: 0, failed: 0, skipped: 'no_table', total: 0 };
   }
   let sent = 0;
   let failed = 0;
@@ -251,7 +281,7 @@ async function sendPushToAll(env, payloadObj) {
       } catch { /* already gone is fine */ }
     } else failed += 1;
   }
-  return { sent, failed, skipped: '' };
+  return { sent, failed, skipped: '', total: subs.length };
 }
 
 function pushPayloadForBooking({ ref, name, eventType, eventDate, startTime, venue, city, status }) {
@@ -353,6 +383,7 @@ export default {
     if (request.method === 'GET' && path === '/api/bookings/check-date') {
       const date = url.searchParams.get('date') || '';
       if (!isValidDate(date)) return json({ ok: false, error: 'Provide a valid date (YYYY-MM-DD).' }, 400);
+      await prunePastBooked(env);
       const taken = await dateTaken(env, date);
       return json({
         ok: true,
@@ -389,6 +420,7 @@ export default {
       }
       if (!isValidDate(eventDate)) return json({ ok: false, error: 'A valid event date is required.' }, 400);
 
+      await prunePastBooked(env);
       const taken = await dateTaken(env, eventDate);
       const status = taken ? 'declined' : 'under_review';
       const now = new Date().toISOString();
@@ -425,26 +457,52 @@ export default {
       // Web push to the owner's devices. Fire-and-forget in production
       // (ctx.waitUntil) so a slow push service never delays the guest;
       // awaited when there is no execution context (local tests).
+      // Log the outcome either way: with Workers Observability off,
+      // this is the only trace of whether a push actually went out.
       const pushPayload = pushPayloadForBooking({
         ref, name, eventType, eventDate, startTime, venue, city, status,
       });
-      const doPush = sendPushToAll(env, pushPayload).catch((err) => {
-        console.log(`[push failed] ${String(err && err.message ? err.message : err)}`);
-        return { sent: 0, failed: 1, skipped: 'error' };
-      });
+      const doPush = sendPushToAll(env, pushPayload)
+        .then((result) => {
+          console.log(`[push result] sent=${result.sent} failed=${result.failed} skipped=${result.skipped || 'none'} booking=${ref}`);
+          return result;
+        })
+        .catch((err) => {
+          console.log(`[push failed] ${String(err && err.message ? err.message : err)} booking=${ref}`);
+          return { sent: 0, failed: 1, skipped: 'error', total: 0 };
+        });
       if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(doPush);
       else await doPush;
 
       const row = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(id).first();
+      // Auto-declined requests are not kept: the guest still gets the
+      // 'declined' outcome and message, and the owner still got the
+      // alert email and push above, but the row is deleted now so it
+      // never shows in My bookings or the owner list. Return a snapshot
+      // (ref/date) so the public page can still show the reference —
+      // public/app.js reads data.booking.ref for declined outcomes.
+      const snapshot = publicBooking(row);
+      if (taken) {
+        await env.DB.prepare('DELETE FROM bookings WHERE id = ?').bind(id).run();
+        return json(
+          {
+            ok: true,
+            outcome: status,
+            deleted: true,
+            booking: snapshot,
+            alertEmail: alert.status,
+            message: 'That date is already booked, so this request was auto-declined.',
+          },
+          201,
+        );
+      }
       return json(
         {
           ok: true,
           outcome: status,
-          booking: publicBooking(row),
+          booking: snapshot,
           alertEmail: alert.status,
-          message: taken
-            ? 'That date is already booked, so this request was auto-declined.'
-            : "Your request was submitted — it's Under Review. A staff member will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.",
+          message: "Your request was submitted — it's Under Review. A staff member will approve it by hand and you'll get a confirmation email from stlspinco@gmail.com once approved.",
         },
         201,
       );
@@ -454,6 +512,7 @@ export default {
     if (request.method === 'GET' && path === '/api/bookings/mine') {
       const email = (url.searchParams.get('email') || '').trim().toLowerCase();
       if (!isValidEmail(email)) return json({ ok: false, error: 'Enter the email address you booked with.' }, 400);
+      await prunePastBooked(env);
       const { results } = await env.DB.prepare(
         'SELECT * FROM bookings WHERE lower(email) = ? ORDER BY event_date ASC, created_at ASC',
       )
@@ -483,6 +542,7 @@ export default {
     // --------------------------------------------------- owner bookings
     if (request.method === 'GET' && path === '/api/owner/bookings') {
       if (!(await requireOwner(env, request))) return json({ ok: false, error: 'Owner login required.' }, 401);
+      await prunePastBooked(env);
       const { results } = await env.DB.prepare('SELECT * FROM bookings ORDER BY event_date ASC, created_at ASC').all();
       return json({ ok: true, bookings: (results || []).map(publicBooking) });
     }
@@ -524,9 +584,13 @@ export default {
         const updated = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(id).first();
         return json({ ok: true, booking: publicBooking(updated), confirmationEmail: confirmation.status });
       }
-      await env.DB.prepare("UPDATE bookings SET status = 'declined', updated_at = ? WHERE id = ?").bind(now, id).run();
-      const updated = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(id).first();
-      return json({ ok: true, booking: publicBooking(updated) });
+      // Manual decline deletes the booking row instead of keeping it
+      // as Declined, so the date frees up and the booking disappears
+      // from the owner list and My bookings. The response carries
+      // deleted:true plus the ref/date (booking is null) so the owner
+      // page — which reads data.booking only on accept — still works.
+      await env.DB.prepare('DELETE FROM bookings WHERE id = ?').bind(id).run();
+      return json({ ok: true, deleted: true, ref: row.ref, eventDate: row.event_date, booking: null });
     }
 
     // --------------------------------------------------- web push
@@ -592,6 +656,36 @@ export default {
       if (!endpoint) return json({ ok: false, error: 'Provide the endpoint to remove.' }, 400);
       await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').bind(endpoint).run();
       return json({ ok: true, subscribed: false });
+    }
+
+    // Owner-only: send a test notification to every stored subscription,
+    // awaited (not fire-and-forget) so the caller can see sent/failed.
+    // Use this to check end-to-end delivery without making a booking.
+    if (request.method === 'POST' && path === '/api/push/test') {
+      if (!(await requireOwner(env, request))) return json({ ok: false, error: 'Owner login required.' }, 401);
+      const result = await sendPushToAll(env, {
+        title: 'STL Spin Co test notification',
+        body: 'If you can see this, booking notifications are working.',
+        url: '/owner',
+        ref: 'test',
+        status: 'test',
+      });
+      console.log(`[push result] sent=${result.sent} failed=${result.failed} skipped=${result.skipped || 'none'} booking=test`);
+      return json({ ok: true, sent: result.sent, failed: result.failed, skipped: result.skipped || '', total: result.total || 0 });
+    }
+
+    // Owner-only: push health — are VAPID keys configured, and how
+    // many devices are subscribed? No endpoints or keys are returned.
+    if (request.method === 'GET' && path === '/api/push/status') {
+      if (!(await requireOwner(env, request))) return json({ ok: false, error: 'Owner login required.' }, 401);
+      let count = 0;
+      try {
+        const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').first();
+        count = Number(row?.n || 0);
+      } catch {
+        count = 0;
+      }
+      return json({ ok: true, configured: vapidKeys(env) !== null, subscriptions: count });
     }
 
     // --------------------------------------------------- static site
